@@ -39,3 +39,55 @@ docker-compose down -v
 - **Database** : `predictions`
 - **Username** : `user`
 - **Password** : `password`
+
+## 📊 Test de l'API
+
+L'API expose un endpoint `/predict` qui prend un nom et des heures d'étude :
+
+**Exemple de requête :**
+```json
+{
+  "name": "John Doe",
+  "hours_studied": 7.5
+}
+```
+
+**Réponse :**
+```json
+{
+  "predicted_score": 79
+}
+```
+
+## 🗂️ Structure du projet
+
+```
+├── docker-compose.yml
+├── api/
+│   ├── Dockerfile
+│   ├── app.py
+│   └── requirements.txt
+├── db/
+│   └── init.sql
+└── pgadmin/
+    ├── servers.json
+    └── .pgpass
+```
+
+## 📝 Commandes utiles
+
+| Commande | Description |
+|----------|-------------|
+| `docker-compose up -d` | Démarrer en arrière-plan |
+| `docker-compose logs` | Voir les logs |
+| `docker-compose logs api` | Voir les logs de l'API |
+| `docker-compose restart` | Redémarrer les services |
+| `docker-compose down -v` | Arrêter et supprimer les volumes |
+
+## ✅ Vérification
+
+Après le démarrage, vérifiez que :
+- ✅ L'API répond sur http://localhost:8000
+- ✅ pgAdmin est accessible sur http://localhost:5050
+- ✅ Le serveur PostgreSQL est automatiquement configuré dans pgAdmin
+- ✅ La table `predictions` contient des données de test
