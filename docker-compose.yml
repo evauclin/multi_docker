@@ -11,3 +11,21 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: predictions
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend
+      - admin
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d predictions"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
