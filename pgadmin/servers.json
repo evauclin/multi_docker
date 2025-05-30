@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Postgres-Local",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "predictions",
+      "Username": "user",
+      "SSLMode": "prefer",
+      "Comment": "Auto-configured PostgreSQL server"
+    }
+  }
+}
