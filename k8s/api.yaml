@@ -3,8 +3,16 @@ kind: Deployment
 metadata:
   name: api
   namespace: predictions-app
+  labels:
+    app: api
+    version: v2.0.0
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: api
@@ -12,13 +20,34 @@ spec:
     metadata:
       labels:
         app: api
+        version: v2.0.0
     spec:
+      # Sécurité : utilisateur non-root
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      # Anti-affinité pour distribuer les pods
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: api
         image: gcr.io/chrome-cascade-461214-g9/predictions-api:latest
         env:
         - name: DB_HOST
           value: "postgres-service"
+        - name: DB_PORT
+          value: "5432"
         - name: DB_NAME
           valueFrom:
             secretKeyRef:
@@ -36,12 +65,37 @@ spec:
               key: password
         ports:
         - containerPort: 8000
+          name: http
+        # Ressources optimisées
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # Health checks améliorés
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Arrêt gracieux
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
 
 ---
 apiVersion: v1
@@ -55,4 +109,59 @@ spec:
   ports:
   - port: 80
     targetPort: 8000
-  type: LoadBalancer  # GKE créera automatiquement un Load Balancer externe
+    name: http
+  type: LoadBalancer
+
+---
+# HPA pour l'autoscaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-hpa
+  namespace: predictions-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget pour la haute disponibilité
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-pdb
+  namespace: predictions-app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api

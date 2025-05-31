@@ -3,8 +3,13 @@ kind: Deployment
 metadata:
   name: postgres
   namespace: predictions-app
+  labels:
+    app: postgres
+    tier: database
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # Important pour les bases de données
   selector:
     matchLabels:
       app: postgres
@@ -12,10 +17,16 @@ spec:
     metadata:
       labels:
         app: postgres
+        tier: database
     spec:
+      # Sécurité
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
       containers:
       - name: postgres
-        image: postgres:15
+        image: postgres:15-alpine
         env:
         - name: POSTGRES_USER
           valueFrom:
@@ -34,13 +45,52 @@ spec:
               key: database
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_INITDB_ARGS
+          value: "--auth-host=scram-sha-256"
+        # Configuration optimisée
+        - name: POSTGRES_SHARED_PRELOAD_LIBRARIES
+          value: "pg_stat_statements"
+        ports:
+        - containerPort: 5432
+          name: postgres
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data
         - name: init-sql
           mountPath: /docker-entrypoint-initdb.d
-        ports:
-        - containerPort: 5432
+        # Ressources optimisées
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        # Health checks
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - user
+            - -d
+            - predictions
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - user
+            - -d
+            - predictions
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
@@ -48,3 +98,18 @@ spec:
       - name: init-sql
         configMap:
           name: postgres-init
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: predictions-app
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres
+  type: ClusterIP
